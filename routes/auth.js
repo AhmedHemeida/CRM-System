@@ -1,89 +1,34 @@
-const express = require ("express") ;
-const router = express.Router() ;
-const User =require("../models/UsersModel") ;
-const Token = require("../controllers/Jwt")
-const bcrypt = require ("bcrypt") ;
-const dotenv =require("dotenv") ;
-dotenv.config();
+const { User } = require('../models');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const SECRET_KEY = 'crm_secret_key';
 
+exports.signUp = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) return res.status(400).json({ message: 'User already exists' });
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, password: hashedPassword });
+    res.status(201).json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
 
+exports.signIn = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ where: { email } });
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-router.post("/signup"  , async(req,res)=> {
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
 
-    try {
-
-      const {name , email , password , phone ,address , isAdmin} = req.body ;
-
-      if(!name || !email || !password  || !phone || !address || !isAdmin)
-      return res.json("missed required fields") ;
-
-     let usr = await User.findOne( { email : req.body.email }).exec() ;
-
-      if(usr) {
-      return res.status(400).send("user already exist..") ;
-    } 
-
-      let salt = await bcrypt.genSalt(10) ;
-     let hashedPassword = await bcrypt.hash(req.body.password , salt) ;
-     usr = new User({
-
-        name       : name ,
-        email      : email   ,
-        password   : hashedPassword  ,
-        phone      : phone ,
-        address    : address ,
-        isAdmin    : isAdmin
-
-    }) ;
-   
-      await usr.save() ;
-
-      res.status(201).json({msg:"User Regist Success.."}) ;
-
-       
-
-    }
-    catch (err){
-    res.status(500).send(`error happen bro -->  ${err}`);
-    }
-}) ;
-
-
-
-
-router.post("/signin" , async(req,res)=>{
-
-    
-    try {
-
-           let usr = await User.findOne( { email : req.body.email }).exec() ; 
-           if(!usr) return res.status(400).json("inValid email or password..") ;
-
-           const validpswrd = await bcrypt.compare(req.body.password , usr.password) ;
-           if(!validpswrd) return res.status(400).json("inValid email or password..") ;
-
-        
-
-           const token = Token.generateToken(usr) ;
-           res.json({msg:"Loged in sucsessfully.." });
-           
-
-       
-                   
-     }
-     catch(err){
-        res.status(500).json({msg:"error Bro"});
-        console.log(err) ;
-    }
-
-
-
-}) ;
-
-
-
-
-
-
-module.exports=router ;
+    const token = jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: '1h' });
+    res.status(200).json({ token, user });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
